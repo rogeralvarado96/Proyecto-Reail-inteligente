@@ -3,144 +3,200 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 from io import BytesIO
-import base64
+import plotly.express as px
+from sklearn.metrics import mean_absolute_percentage_error, r2_score
 
-
-# 1. CONFIGURACIÓN DE LA PÁGINA
+# ==========================================
+# 1. CONFIGURACIÓN DE LA PÁGINA Y ESTILO
+# ==========================================
 st.set_page_config(page_title="GIG - Simulador UNAD", layout="wide")
 
-# 2. INYECCIÓN DE CSS PARA FONDO BLANCO Y ESTILO INSTITUCIONAL
 st.markdown("""
     <style>
-        /* Fondo principal de la aplicación */
-        .stApp {
-            background-color: #FFFFFF;
-        }
-
-        /* Fondo de la barra lateral */
-        [data-testid="stSidebar"] {
-            background-color: #F8F9FA;
-            border-right: 1px solid #E0E0E0;
-        }
-
-        /* Color de los títulos y subtítulos (Azul UNAD) */
-        h1, h2, h3, h4, h5, h6, .stSubheader {
-            color: #005088 !important;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        /* Estilo para los botones */
-        .stButton>button {
-            background-color: #005088;
-            color: white;
-            border-radius: 5px;
-            border: none;
-            padding: 0.5rem 1rem;
-        }
-        
-        .stButton>button:hover {
-            background-color: #F8B133; /* Amarillo UNAD al pasar el mouse */
-            color: #005088;
-        }
-
-        /* Estilo para los mensajes de información */
-        .stInfo {
-            background-color: #f0f7ff;
-            color: #005088;
-            border: 1px solid #005088;
-        }
+        .stApp { background-color: #FFFFFF; }
+        [data-testid="stSidebar"] { background-color: #F8F9FA; border-right: 1px solid #E0E0E0; }
+        h1, h2, h3, h4, .stSubheader { color: #005088 !important; font-family: 'Segoe UI', sans-serif; }
+        .stButton>button { background-color: #005088; color: white; border-radius: 5px; width: 100%; }
+        .stButton>button:hover { background-color: #F8B133; color: #005088; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONFIGURACIÓN DEL LOGO EN BASE64 ---
-# Pega aquí el resultado del script anterior entre las comillas
-logo_base64 = "iVBORw0KGgoAAAANSUhEUgAAAb8AAABOCAMAAACHdOhIAAAyGGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4KPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS4zLWMwMTEgNjYuMTQ1NjYxLCAyMDEyLzAyLzA2LTE0OjU2OjI3ICAgICAgICAiPgogICA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAgICAgICB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iPgogICAgICAgICA8eG1wOkNyZWF0b3JUb29sPkFkb2JlIEZpcmV3b3JrcyBDUzYgKFdpbmRvd3MpPC94bXA6Q3JlYXRvclRvb2w+CiAgICAgICAgIDx4bXA6Q3JlYXRlRGF0ZT4yMDIyLTAyLTAyVDAwOjE5OjIwWjwveG1wOkNyZWF0ZURhdGU+CiAgICAgICAgIDx4bXA6TW9kaWZ5RGF0ZT4yMDIyLTAyLTAyVDAwOjE5OjUxWjwveG1wOk1vZGlmeURhdGU+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAgICAgICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iPgogICAgICAgICA8ZGM6Zm9ybWF0PmltYWdlL3BuZzwvZGM6Zm9ybWF0PgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KICAgPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAo/Pg=="
+# --- RUTA DEL LOGO LOCAL ---
+LOGO_PATH = r"D:\Documents\Roger\Universidad\Proyecto de grado ll\DATA GIG\Proyecto aplicado\logo-unad-acreditacion-min.png"
 
-def get_image_base64(base64_data):
-    return f"data:image/png;base64,{base64_data}"
+# ==========================================
+# 2. INICIALIZACIÓN DE ESTADOS (PERSISTENCIA)
+# ==========================================
+if 'resultado_prediccion' not in st.session_state:
+    st.session_state.resultado_prediccion = None
+    st.session_state.historico = None
+    st.session_state.metricas = None
 
+# ==========================================
+# 3. BARRA LATERAL (SIDEBAR)
+# ==========================================
 with st.sidebar:
-    if logo_base64 != "iVBORw0KGgoAAAANSUhE": # Validación simple
-        st.image(get_image_base64(logo_base64), use_container_width=True)
-    else:
-        # Fallback al logo de Wikipedia si el base64 no es el real
-        st.image("https://upload.wikimedia.org/wikipedia/commons/f/f6/UNAD_LOGO.png", use_container_width=True)
+    try:
+        st.image(LOGO_PATH, use_container_width=True)
+    except:
+        st.warning("Logo no encontrado en la ruta local.")
         
     st.markdown("---")
     st.header("⚙️ Configuración")
     uploaded_file = st.file_uploader("Subir Excel data Histórica", type=["xlsx"])
     
-    input_marcas = st.text_input("IDs de Marcas (separados por coma)", "23, 27, 73")
-    marcas_list = [int(x.strip()) for x in input_marcas.split(",")]
+    marcas_seleccionadas = []
+    if uploaded_file:
+        # Carga rápida para extraer marcas disponibles
+        df_info_temp = pd.read_excel(uploaded_file, sheet_name='Info_Pdv')
+        df_info_temp['marca_id'] = pd.to_numeric(df_info_temp['marca_id'].astype(str).str.strip().str[1:], errors='coerce').fillna(0).astype(int)
+        lista_marcas = sorted(df_info_temp['marca_id'].unique())
+        marcas_seleccionadas = st.multiselect("Seleccione Marcas a Predecir:", options=lista_marcas, default=lista_marcas[:2])
     
     fecha_proy = st.date_input("Mes a Proyectar", value=pd.to_datetime("2026-03-01"))
     fecha_proy = fecha_proy.replace(day=1)
 
-# Título Principal
-st.title("🚀 Motor de Inferencia: Trinidad Operativa")
-st.subheader("Proyecto de Grado - Retail Inteligente: Predicción de Demanda a través de Modelos de Ciencia de Datos")
-
-# --- FUNCIÓN DE PROCESAMIENTO ---
+# ==========================================
+# 4. FUNCIONES TÉCNICAS (MOTOR XGBOOST)
+# ==========================================
 def procesar_proyeccion(file, marcas_a_predecir, fecha_proyeccion):
+    # Carga de pestañas
     df_info = pd.read_excel(file, sheet_name='Info_Pdv')
     df_ventas = pd.read_excel(file, sheet_name='Data_Historica')
     df_ventas['fecha'] = pd.to_datetime(df_ventas['fecha'], format='%d/%m/%Y', errors='coerce')
-    df_master = pd.merge(df_ventas, df_info, on='punto_de_venta_id', how='left')
     
+    # Merge y limpieza de IDs (Quitando la letra inicial si existe)
+    df_master = pd.merge(df_ventas, df_info, on='punto_de_venta_id', how='left')
     columnas_id = ['punto_de_venta_id', 'ubicacion_id', 'tipo_pdv_id', 'marca_id', 'categoria_id']
     for col in columnas_id:
         df_master[col] = pd.to_numeric(df_master[col].astype(str).str.strip().str[1:], errors='coerce').fillna(0).astype(int)
     
+    # Cálculo de Ticket y Filtro de Robustez (> $5M y > 10 TX)
     df_master['ticket'] = np.where(df_master['transacciones'] > 0, df_master['ventas_monto'] / df_master['transacciones'], 0)
-    df_master = df_master[(df_master['transacciones'] >= 1) & (df_master['ticket'] >= 1000) & (df_master['ticket'] <= 200000)].copy()
+    df_clean = df_master[(df_master['ventas_monto'] > 5000000) & (df_master['transacciones'] > 10)].copy()
     
-    df_master = df_master.sort_values(by=['punto_de_venta_id', 'fecha'])
-    fechas_pdv = df_master.groupby('punto_de_venta_id')['fecha'].agg(['min', 'max']).reset_index()
+    # Ingeniería de Features (Lags)
+    df_clean = df_clean.sort_values(by=['punto_de_venta_id', 'fecha'])
+    df_clean['Mes'] = df_clean['fecha'].dt.month
+    for prefijo, col_base in [('ventas', 'ventas_monto'), ('transacciones', 'transacciones'), ('ticket', 'ticket')]:
+        df_clean[f'{prefijo}_lag_1'] = df_clean.groupby('punto_de_venta_id')[col_base].shift(1).fillna(0)
+    df_clean['ventas_roll_mean_3'] = df_clean.groupby('punto_de_venta_id')['ventas_monto'].transform(lambda x: x.shift(1).rolling(3).mean()).fillna(0)
     
-    grilla = []
-    for _, row in fechas_pdv.iterrows():
-        rango = pd.date_range(start=row['min'], end=fecha_proyeccion, freq='MS')
-        grilla.append(pd.DataFrame({'punto_de_venta_id': row['punto_de_venta_id'], 'fecha': rango}))
+    # Entrenamiento
+    df_train = df_clean[df_clean['fecha'] < fecha_proyeccion].dropna()
+    df_target = df_clean[df_clean['fecha'] == (pd.to_datetime(fecha_proyeccion) - pd.DateOffset(months=1))].copy()
+    df_target['fecha'] = fecha_proyeccion
+    df_target = df_target[df_target['marca_id'].isin(marcas_a_predecir)]
+
+    features = ['marca_id', 'categoria_id', 'tipo_pdv_id', 'ubicacion_id', 'Mes', 'ventas_lag_1', 'transacciones_lag_1', 'ticket_lag_1', 'ventas_roll_mean_3']
+    targets = {'Ventas': 'ventas_monto', 'Transacciones': 'transacciones', 'Ticket': 'ticket'}
     
-    df_model = pd.merge(pd.concat(grilla), df_master, on=['punto_de_venta_id', 'fecha'], how='left')
-    cols_estaticas = ['marca_id', 'categoria_id', 'tipo_pdv_id', 'ubicacion_id']
-    df_model[cols_estaticas] = df_model.groupby('punto_de_venta_id')[cols_estaticas].ffill()
-    
-    df_model['Mes'] = df_model['fecha'].dt.month
-    df_model['ventas_lag_1'] = df_model.groupby('punto_de_venta_id')['ventas_monto'].shift(1).fillna(0)
-    df_model['transacciones_lag_1'] = df_model.groupby('punto_de_venta_id')['transacciones'].shift(1).fillna(0)
-    df_model['ticket_lag_1'] = df_model.groupby('punto_de_venta_id')['ticket'].shift(1).fillna(0)
-    df_model['ventas_lag_12'] = df_model.groupby('punto_de_venta_id')['ventas_monto'].shift(12).fillna(0)
-    df_model['meses_desde_apertura'] = df_model.groupby('punto_de_venta_id').cumcount() + 1
-    df_model['ventas_roll_mean_3'] = df_model.groupby('punto_de_venta_id')['ventas_monto'].transform(lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()).fillna(0)
-    
-    df_train = df_model[df_model['fecha'] < fecha_proyeccion].dropna(subset=['ventas_monto', 'transacciones', 'ticket'])
-    df_target = df_model[(df_model['fecha'] == fecha_proyeccion) & (df_model['marca_id'].isin(marcas_a_predecir))].copy()
-    
-    features = ['marca_id', 'categoria_id', 'tipo_pdv_id', 'ubicacion_id', 'Mes', 'ventas_lag_1', 'transacciones_lag_1', 'ticket_lag_1', 'ventas_lag_12', 'meses_desde_apertura', 'ventas_roll_mean_3']
-    targets = {'Ventas': 'ventas_monto', 'TX': 'transacciones', 'Ticket': 'ticket'}
-    
+    metricas_res = {}
     for nombre, col in targets.items():
-        model = xgb.XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=6, random_state=42)
+        model = xgb.XGBRegressor(n_estimators=150, max_depth=5, learning_rate=0.07, random_state=42)
         model.fit(df_train[features], df_train[col])
+        p_train = model.predict(df_train[features])
+        metricas_res[nombre] = {
+            'MAPE': f"{mean_absolute_percentage_error(df_train[col], p_train):.2%}",
+            'R2': f"{r2_score(df_train[col], p_train):.2f}"
+        }
         df_target[f'Pred_{nombre}'] = np.maximum(0, model.predict(df_target[features]))
         
-    return df_target[['fecha', 'punto_de_venta_id', 'marca_id', 'ubicacion_id', 'tipo_pdv_id', 'Pred_Ventas', 'Pred_TX', 'Pred_Ticket']]
+    return df_target, df_clean, metricas_res
 
-# --- LÓGICA DE EJECUCIÓN ---
-if uploaded_file is not None:
-    if st.button("Generar Proyección 📈"):
-        with st.spinner("Procesando datos institucionales..."):
-            try:
-                res = procesar_proyeccion(uploaded_file, marcas_list, pd.to_datetime(fecha_proy))
-                st.success("✅ Análisis Completado")
-                st.dataframe(res)
-                
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    res.to_excel(writer, index=False, sheet_name='Resultados')
-                st.download_button(label="📥 Descargar Resultados", data=output.getvalue(), file_name=f"UNAD_Proyeccion_{fecha_proy.strftime('%Y_%m')}.xlsx")
-            except Exception as e:
-                st.error(f"Error: {e}")
+# ==========================================
+# 5. CUERPO PRINCIPAL Y DASHBOARD
+# ==========================================
+st.title("🚀 Motor de Inferencia: Trinidad Operativa")
+st.subheader("Proyecto de Grado - Dashboard Estratégico de Retail")
+
+if uploaded_file and marcas_seleccionadas:
+    if st.button("Generar Proyección y Análisis 📈"):
+        with st.spinner("Entrenando modelos y calculando crecimientos..."):
+            res, hist, mets = procesar_proyeccion(uploaded_file, marcas_seleccionadas, pd.to_datetime(fecha_proy))
+            st.session_state.resultado_prediccion = res
+            st.session_state.historico = hist
+            st.session_state.metricas = mets
+
+    if st.session_state.resultado_prediccion is not None:
+        res = st.session_state.resultado_prediccion
+        hist = st.session_state.historico
+        mets = st.session_state.metricas
+
+        # --- FILTROS GLOBALES DEL DASHBOARD ---
+        st.markdown("### 🛠️ Filtros de Visualización")
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            var_viz = st.selectbox("Métrica:", ["Ventas", "Transacciones", "Ticket"])
+            col_h = "ventas_monto" if var_viz == "Ventas" else ("transacciones" if var_viz == "Transacciones" else "ticket")
+            col_p = f"Pred_{var_viz}"
+            agg_f = "mean" if var_viz == "Ticket" else "sum"
+        with f2:
+            m_ver = st.selectbox("Marca:", options=marcas_seleccionadas)
+        with f3:
+            dim_seg = st.selectbox("Segmentar por:", ["categoria_id", "ubicacion_id", "tipo_pdv_id"])
+
+# --- BLOQUE 1: CRECIMIENTO Y PERFORMANCE ---
+        st.markdown("---")
+        
+        # Cálculos de Crecimiento
+        f_ant = pd.to_datetime(fecha_proy) - pd.DateOffset(months=1)
+        f_yoy = pd.to_datetime(fecha_proy) - pd.DateOffset(years=1)
+        
+        v_actual = res[res['marca_id'] == m_ver][col_p].agg(agg_f)
+        v_ant = hist[(hist['marca_id'] == m_ver) & (hist['fecha'] == f_ant)][col_h].agg(agg_f)
+        v_yoy = hist[(hist['marca_id'] == m_ver) & (hist['fecha'] == f_yoy)][col_h].agg(agg_f)
+
+        def get_delta(cur, prev):
+            return f"{((cur-prev)/prev)*100:.2f}%" if prev and prev > 0 else "N/A"
+
+        # Fila A: Valores de Negocio (Grandes)
+        c1, c2, c3 = st.columns(3)
+        with c1: st.metric(f"Predicción {var_viz}", f"{v_actual:,.0f}")
+        with c2: st.metric("Crecimiento MoM", get_delta(v_actual, v_ant), delta=get_delta(v_actual, v_ant))
+        with c3: st.metric("Crecimiento YoY", get_delta(v_actual, v_yoy), delta=get_delta(v_actual, v_yoy))
+
+        # Fila B: Métricas Técnicas (Pequeñas y discretas - ESTO ES LO NUEVO)
+        st.markdown(f"<p style='color: #7f8c8d; font-size: 0.8rem; margin-bottom: -10px;'>Fiabilidad del Modelo para {var_viz}:</p>", unsafe_allow_html=True)
+        t1, t2, t3, t4 = st.columns([1, 1, 1, 1])
+        t1.caption(f"**MAPE:** {mets[var_viz]['MAPE']}")
+        t2.caption(f"**R² Score:** {mets[var_viz]['R2']}")
+
+        # --- BLOQUE 2: TENDENCIA HISTÓRICA ---
+        st.markdown(f"#### 📈 Tendencia Histórica vs Predicción ({var_viz})")
+        df_h_plot = hist[hist['marca_id'] == m_ver].groupby('fecha')[col_h].agg(agg_f).reset_index()
+        df_p_plot = pd.DataFrame({'fecha': [pd.to_datetime(fecha_proy)], col_h: [v_actual]})
+        
+        fig_line = px.line(pd.concat([df_h_plot, df_p_plot]), x='fecha', y=col_h, markers=True, template="plotly_white")
+        fig_line.add_scatter(x=df_p_plot['fecha'], y=df_p_plot[col_h], mode='markers', marker=dict(size=15, color='gold'), name='Predicción')
+        st.plotly_chart(fig_line, use_container_width=True)
+
+        # --- BLOQUE 3: TRAYECTORIA SEGMENTADA CON FILTRO DINÁMICO ---
+        st.markdown(f"#### 🔍 Análisis Detallado por {dim_seg}")
+        
+        df_dim_h = hist[hist['marca_id'] == m_ver].groupby(['fecha', dim_seg])[col_h].agg(agg_f).reset_index()
+        df_dim_p = res[res['marca_id'] == m_ver].groupby(['fecha', dim_seg])[col_p].agg(agg_f).reset_index()
+        df_dim_p.rename(columns={col_p: col_h}, inplace=True)
+        df_total_dim = pd.concat([df_dim_h, df_dim_p]).sort_values(['fecha', dim_seg])
+
+        # Filtro de selección para no saturar la gráfica
+        opciones_dim = sorted(df_total_dim[dim_seg].unique())
+        seleccion = st.multiselect(f"Seleccione {dim_seg} para visualizar:", options=opciones_dim, default=opciones_dim[:5])
+
+        if seleccion:
+            df_filt = df_total_dim[df_total_dim[dim_seg].isin(seleccion)]
+            fig_dim = px.line(df_filt, x='fecha', y=col_h, color=str(dim_seg), markers=True, title=f"Trayectoria de {var_viz}")
+            st.plotly_chart(fig_dim, use_container_width=True)
+        
+        # Tabla de exportación
+        st.markdown("#### 📋 Datos Predichos por Punto de Venta")
+        st.dataframe(res[res['marca_id'] == m_ver][['punto_de_venta_id', dim_seg, col_p]])
+        
+        # Botón de descarga
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            res.to_excel(writer, index=False, sheet_name='Proyeccion')
+        st.download_button("📥 Descargar Excel", output.getvalue(), f"Proyeccion_{m_ver}_{fecha_proy.strftime('%Y%m')}.xlsx")
+
 else:
-    st.info("Por favor, sube el archivo Excel para comenzar la predicción.")
+    st.info("👋 Bienvenida/o. Por favor carga el archivo Excel y selecciona las marcas para iniciar.")
